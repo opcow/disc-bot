@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -143,38 +142,34 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	case "!reaper": // periodic USA death toll reports
 		if len(msg) < 2 || msg[1] != "off" {
 			if len(msg) == 1 {
-				s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Grim Reaper reports are *on* for %s.", chanIDtoName(m.ChannelID)))
+				s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Grim Reaper reports are *on* for %s.", chanIDtoMention(m.ChannelID)))
 				covChans[m.ChannelID] = struct{}{}
 			} else if id, err := chanLinkToID(msg[1]); err == nil {
 				covChans[id] = struct{}{}
-				s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Grim Reaper reports are *on* for %s.", msg[1]))
+				s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Grim Reaper reports are *on* for %s.", chanIDtoMention(id)))
 			}
 		} else if len(msg) == 2 {
-			s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Grim Reaper reports are *off* for %s.", chanIDtoName(m.ChannelID)))
+			s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Grim Reaper reports are *off* for %s.", chanIDtoMention(m.ChannelID)))
 			delete(covChans, m.ChannelID)
 		} else if id, err := chanLinkToID(msg[2]); err == nil {
 			delete(covChans, id)
-			s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Grim Reaper reports are *off* for %s.", msg[2]))
+			s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Grim Reaper reports are *off* for %s.", chanIDtoMention(id)))
 		}
 	}
 }
 
-func chanIDtoName(id string) string {
-	var name string
+// Converts a channel ID to a mention. On error it returns the channel ID string.
+func chanIDtoMention(id string) string {
 	channel, err := discord.State.Channel(id)
 	if err == nil {
-		name = channel.Mention()
-	} else {
-		name = "this channel"
+		return channel.Mention()
 	}
-	return name
+	return "channel: " + id
 }
 
+// Converts a channel link to an ID. If passed a valid ID it is returned it unchanged.
 func chanLinkToID(link string) (id string, err error) {
-	if len(link) < 4 {
-		return "", errors.New("Channel ID length error")
-	}
-	id = link[2 : len(link)-1]
+	id = strings.Replace(strings.Replace(strings.Replace(link, "<", "", 1), ">", "", 1), "#", "", 1)
 	_, err = discord.Channel(id)
 	if err != nil {
 		return "", err
