@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -140,21 +141,45 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 			s.ChannelMessageSend(m.ChannelID, report)
 		}
 	case "!reaper": // periodic USA death toll reports
-		var name string
-		channel, err := s.State.Channel(m.ChannelID)
-		if err == nil {
-			name = channel.Mention()
-		} else {
-			name = "this channel"
-		}
-		if len(msg) > 1 && msg[1] == "off" {
-			s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Grim Reaper reports are *off* for %s.", name))
+		if len(msg) < 2 || msg[1] != "off" {
+			if len(msg) == 1 {
+				s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Grim Reaper reports are *on* for %s.", chanIDtoName(m.ChannelID)))
+				covChans[m.ChannelID] = struct{}{}
+			} else if id, err := chanLinkToID(msg[1]); err == nil {
+				covChans[id] = struct{}{}
+				s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Grim Reaper reports are *on* for %s.", msg[1]))
+			}
+		} else if len(msg) == 2 {
+			s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Grim Reaper reports are *off* for %s.", chanIDtoName(m.ChannelID)))
 			delete(covChans, m.ChannelID)
-		} else {
-			s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Grim Reaper reports are *on* for %s.", name))
-			covChans[m.ChannelID] = struct{}{}
+		} else if id, err := chanLinkToID(msg[2]); err == nil {
+			delete(covChans, id)
+			s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Grim Reaper reports are *off* for %s.", msg[2]))
 		}
 	}
+}
+
+func chanIDtoName(id string) string {
+	var name string
+	channel, err := discord.State.Channel(id)
+	if err == nil {
+		name = channel.Mention()
+	} else {
+		name = "this channel"
+	}
+	return name
+}
+
+func chanLinkToID(link string) (id string, err error) {
+	if len(link) < 4 {
+		return "", errors.New("Channel ID length error")
+	}
+	id = link[2 : len(link)-1]
+	_, err = discord.Channel(id)
+	if err != nil {
+		return "", err
+	}
+	return id, nil
 }
 
 // "A wise– if perhaps slightly pedantic– generator of metaphor."
