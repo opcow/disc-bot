@@ -173,9 +173,7 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		if !isOp(m.Author.ID) {
 			return
 		}
-		fmt.Printf("%+v", m.Message.Author.ID)
 		for k := range covChans {
-			fmt.Println(k)
 			s.ChannelMessageSend(m.ChannelID, chanIDtoMention(k))
 		}
 	case "!op":
