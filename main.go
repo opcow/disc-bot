@@ -179,17 +179,18 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 			s.ChannelMessageSend(m.ChannelID, chanIDtoMention(k))
 		}
 	case "!op":
-		if len(msg) > 1 && msg[1] == *passwd {
-			if len(msg) > 2 {
-				u, err := s.User(msg[2])
-				if err == nil {
-					covOps[u.ID] = struct{}{}
-				} else {
-					s.ChannelMessageSend(m.ChannelID, "Invalid user ID.")
-				}
+		if !isOp(m.Author.ID) {
+			return
+		}
+		if len(msg) > 1 {
+			u, err := s.User(msg[1])
+			if err == nil {
+				covOps[u.ID] = struct{}{}
 			} else {
-				covOps[m.Message.Author.ID] = struct{}{}
+				s.ChannelMessageSend(m.ChannelID, "Invalid user ID.")
 			}
+		} else {
+			covOps[m.Message.Author.ID] = struct{}{}
 		}
 	case "!deop":
 		if !isOp(m.Author.ID) {
@@ -213,14 +214,14 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 			s.ChannelMessageDelete(msg[1], msg[2])
 		}
 	case "!quit":
-		if isOp(m.Author.ID) {
+		if isOp(m.Author.ID) && m.Message.GuildID == "" {
 			sc <- os.Kill
 		}
 	}
 }
 
 func isOp(id string) bool {
-	if _, ok := covOps[id]; ok || *passwd == "" {
+	if _, ok := covOps[id]; ok {
 		return true
 	}
 	c, err := discord.UserChannelCreate(id)
