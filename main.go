@@ -28,25 +28,45 @@ var (
 	dToken       = flag.String("t", "", "discord autentication token")
 	rToken       = flag.String("r", "", "rapidapi autentication token")
 	cronSpec     = flag.String("c", "0 1 * * *", "cron spec for periodic actions")
-	initialChans = flag.String("i", "", "comma separated string ofinitial channels to report to")
+	initialChans = flag.String("i", "", "comma separated string of initial channels to report to")
 	passwd       = flag.String("p", "", "password for the bot")
 	operators    = flag.String("o", "", "comma separated string of operators for the bot")
 	reportCron   *cron.Cron
 	reportCronID cron.EntryID
 	discord      *discordgo.Session
-	mCreate      *discordgo.MessageCreate
-	covChans     map[string]struct{}
-	covOps       map[string]struct{}
-	sc           chan os.Signal
+	// channels for covid announcements
+	covChans map[string]struct{}
+	// bot operators
+	botOps map[string]struct{}
+	sc     chan os.Signal
 )
+
+func getEnv() {
+	*dToken = os.Getenv("DISCORDTOKEN")
+	*rToken = os.Getenv("RAPIDAPITOKEN")
+	*cronSpec = os.Getenv("DTCRONSPEC")
+	*initialChans = os.Getenv("DTCHANS")
+	*operators = os.Getenv("DTOPS")
+	*passwd = os.Getenv("DTPASSWD")
+}
 
 func main() {
 
-	flag.Parse()
+	getEnv()
+	flag.Parse() // flags override env good/bad?
 
 	if *dToken == "" {
 		fmt.Println("Usage: dist_twit -t <auth_token>")
 		return
+	}
+
+	covChans = make(map[string]struct{})
+	for _, c := range strings.Split(*initialChans, ",") {
+		covChans[c] = struct{}{}
+	}
+	botOps = make(map[string]struct{})
+	for _, c := range strings.Split(*operators, ",") {
+		botOps[c] = struct{}{}
 	}
 
 	var err error
@@ -64,17 +84,6 @@ func main() {
 	if err != nil {
 		fmt.Println("error opening connection,", err)
 		return
-	}
-
-	covChans = make(map[string]struct{})
-	for _, c := range strings.Split(*initialChans, ",") {
-		covChans[c] = struct{}{}
-
-	}
-	covOps = make(map[string]struct{})
-	for _, c := range strings.Split(*operators, ",") {
-		covOps[c] = struct{}{}
-
 	}
 
 	reportCron = cron.New()
@@ -183,20 +192,20 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		if len(msg) > 1 {
 			u, err := s.User(msg[1])
 			if err == nil {
-				covOps[u.ID] = struct{}{}
+				botOps[u.ID] = struct{}{}
 			} else {
 				s.ChannelMessageSend(m.ChannelID, "Invalid user ID.")
 			}
 		} else {
-			covOps[m.Message.Author.ID] = struct{}{}
+			botOps[m.Message.Author.ID] = struct{}{}
 		}
 	case "!deop":
 		if !isOp(m.Author.ID) {
 			return
 		}
 		if len(msg) > 1 {
-			if _, ok := covOps[msg[2]]; ok {
-				delete(covOps, msg[2])
+			if _, ok := botOps[msg[2]]; ok {
+				delete(botOps, msg[2])
 				u, err := s.User(msg[2])
 				if err != nil {
 					s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("User ID %s removed from operator list.", msg[2]))
@@ -211,6 +220,8 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		if len(msg) > 2 {
 			s.ChannelMessageDelete(msg[1], msg[2])
 		}
+	case "!config":
+		showConfig(m.Author.ID)
 	case "!quit":
 		if isOp(m.Author.ID) && m.Message.GuildID == "" {
 			sc <- os.Kill
@@ -218,8 +229,30 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	}
 }
 
+func showConfig(id string) {
+	if isOp(id) {
+		c, err := discord.UserChannelCreate(id)
+		if err == nil {
+			discord.ChannelMessageSend(c.ID, fmt.Sprintf("cronspec: %s", *cronSpec))
+			time.Sleep(time.Millisecond * 500)
+			// discord.ChannelMessageSend(c.ID, "channels:")
+			var s = "channels:"
+			for k := range covChans {
+				s = s + " " + chanIDtoMention(k)
+			}
+			discord.ChannelMessageSend(c.ID, s)
+			time.Sleep(time.Millisecond * 500)
+			s = "operators:"
+			for k := range botOps {
+				s = s + " " + userIDtoMention(k)
+			}
+			discord.ChannelMessageSend(c.ID, s)
+		}
+	}
+}
+
 func isOp(id string) bool {
-	if _, ok := covOps[id]; ok {
+	if _, ok := botOps[id]; ok {
 		return true
 	}
 	c, err := discord.UserChannelCreate(id)
@@ -227,6 +260,14 @@ func isOp(id string) bool {
 		discord.ChannelMessageSend(c.ID, "You are not an operator of this bot.")
 	}
 	return false
+}
+
+func userIDtoMention(id string) string {
+	u, err := discord.User(id)
+	if err == nil {
+		return u.Mention()
+	}
+	return id
 }
 
 // Converts a channel ID to a mention. On error it returns the channel ID string.
