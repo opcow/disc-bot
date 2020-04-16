@@ -28,11 +28,16 @@ var (
 	dToken       = flag.String("t", "", "discord autentication token")
 	rToken       = flag.String("r", "", "rapidapi autentication token")
 	cronSpec     = flag.String("c", "0 1 * * *", "cron spec for periodic actions")
+	initialChans = flag.String("i", "", "comma separated string ofinitial channels to report to")
+	passwd       = flag.String("p", "", "password for the bot")
+	operators    = flag.String("o", "", "comma separated string of operators for the bot")
 	reportCron   *cron.Cron
 	reportCronID cron.EntryID
 	discord      *discordgo.Session
 	mCreate      *discordgo.MessageCreate
 	covChans     map[string]struct{}
+	covOps       map[string]struct{}
+	sc           chan os.Signal
 )
 
 func main() {
@@ -62,6 +67,16 @@ func main() {
 	}
 
 	covChans = make(map[string]struct{})
+	for _, c := range strings.Split(*initialChans, ",") {
+		covChans[c] = struct{}{}
+
+	}
+	covOps = make(map[string]struct{})
+	for _, c := range strings.Split(*operators, ",") {
+		covOps[c] = struct{}{}
+
+	}
+
 	reportCron = cron.New()
 	reportCronID, err = reportCron.AddFunc(*cronSpec, cronReport)
 	if err == nil {
@@ -70,9 +85,10 @@ func main() {
 		fmt.Println(err)
 	}
 
+	fmt.Printf("Cronspec is %s\n", *cronSpec)
 	// Wait here until CTRL-C or other term signal is received.
 	fmt.Println("Bot is now running.  Press CTRL-C to exit.")
-	sc := make(chan os.Signal, 1)
+	sc = make(chan os.Signal, 1)
 	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt, os.Kill)
 	<-sc
 
@@ -80,7 +96,6 @@ func main() {
 	reportCron.Stop()
 	// Cleanly close down the Discord session.
 	discord.Close()
-
 }
 
 func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
@@ -88,11 +103,6 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	// Ignore all messages created by the bot itself
 	// This isn't required in this specific example but it's a good practice.
 	if m.Author.ID == s.State.User.ID {
-		return
-	}
-	// If the message is "ping" reply with "Pong!"
-	if m.Content == "ping" {
-		s.ChannelMessageSend(m.ChannelID, "Pong!")
 		return
 	}
 	msg := strings.Split(m.Content, " ")
@@ -142,6 +152,9 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 		}
 	case "!reaper": // periodic USA death toll reports
 		if len(msg) < 2 || msg[1] != "off" {
+			if !isOp(m.Author.ID) {
+				return
+			}
 			if len(msg) == 1 {
 				s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Grim Reaper reports are *on* for %s.", chanIDtoMention(m.ChannelID)))
 				covChans[m.ChannelID] = struct{}{}
@@ -156,7 +169,65 @@ func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 			delete(covChans, id)
 			s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Grim Reaper reports are *off* for %s.", chanIDtoMention(id)))
 		}
+	case "!chans":
+		if !isOp(m.Author.ID) {
+			return
+		}
+		fmt.Printf("%+v", m.Message.Author.ID)
+		for k := range covChans {
+			fmt.Println(k)
+			s.ChannelMessageSend(m.ChannelID, chanIDtoMention(k))
+		}
+	case "!op":
+		if len(msg) > 1 && msg[1] == *passwd {
+			if len(msg) > 2 {
+				u, err := s.User(msg[2])
+				if err == nil {
+					covOps[u.ID] = struct{}{}
+				} else {
+					s.ChannelMessageSend(m.ChannelID, "Invalid user ID.")
+				}
+			} else {
+				covOps[m.Message.Author.ID] = struct{}{}
+			}
+		}
+	case "!deop":
+		if !isOp(m.Author.ID) {
+			return
+		}
+		if len(msg) > 1 {
+			if _, ok := covOps[msg[2]]; ok {
+				delete(covOps, msg[2])
+				u, err := s.User(msg[2])
+				if err != nil {
+					s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("User ID %s removed from operator list.", msg[2]))
+				} else {
+					s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("User %s removed from operator list.", u.Mention()))
+				}
+			} else {
+				s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("User ID %s is not in the operator list.", msg[2]))
+			}
+		}
+	case "!delmsg":
+		if len(msg) > 2 {
+			s.ChannelMessageDelete(msg[1], msg[2])
+		}
+	case "!quit":
+		if isOp(m.Author.ID) {
+			sc <- os.Kill
+		}
 	}
+}
+
+func isOp(id string) bool {
+	if _, ok := covOps[id]; ok || *passwd == "" {
+		return true
+	}
+	c, err := discord.UserChannelCreate(id)
+	if err == nil {
+		discord.ChannelMessageSend(c.ID, "You are not an operator of this bot.")
+	}
+	return false
 }
 
 // Converts a channel ID to a mention. On error it returns the channel ID string.
