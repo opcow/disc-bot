@@ -69,11 +69,13 @@ func covid(country string) (string, error) {
 	}
 
 	if country == "all" {
-		return fmt.Sprintf("Covid-19 World: %d active cases, %d critical cases, %d recoverd, %d total cases, %d deaths.\n",
-			report.Response[0].Cases.Active, report.Response[0].Cases.Critical, report.Response[0].Cases.Recovered, report.Response[0].Cases.Total, report.Response[0].Deaths.Total), nil
+		return fmt.Sprintf("Covid-19 World: %d active cases, %d critical cases, %d recoverd, %d total cases, %d deaths (%s).\n",
+			report.Response[0].Cases.Active, report.Response[0].Cases.Critical, report.Response[0].Cases.Recovered,
+			report.Response[0].Cases.Total, report.Response[0].Deaths.Total, report.Response[0].Deaths.New), nil
 	}
-	return fmt.Sprintf("Covid-19 %s: %d tested, %d active cases, %d critical cases, %d recoverd, %d total cases, %d deaths.\n",
-		report.Response[0].Country, report.Response[0].Tests.Total, report.Response[0].Cases.Active, report.Response[0].Cases.Critical, report.Response[0].Cases.Recovered, report.Response[0].Cases.Total, report.Response[0].Deaths.Total), nil
+	return fmt.Sprintf("Covid-19 %s: %d tested, %d active cases, %d critical cases, %d recoverd, %d total cases, %d deaths (%s).\n",
+		report.Response[0].Country, report.Response[0].Tests.Total, report.Response[0].Cases.Active, report.Response[0].Cases.Critical,
+		report.Response[0].Cases.Recovered, report.Response[0].Cases.Total, report.Response[0].Deaths.Total, report.Response[0].Deaths.New), nil
 }
 
 func reaper() (string, error) {
@@ -111,7 +113,7 @@ func reaper() (string, error) {
 		tStr = tLoc.Format("2006-01-02 @ 15:04 ") + zone
 	}
 
-	return fmt.Sprintf("USA (%s): %d covid-19 deaths.\n", tStr, report.Response[0].Deaths.Total), nil
+	return fmt.Sprintf("USA (%s): %d covid-19 deaths. (%s)\n", tStr, report.Response[0].Deaths.Total, report.Response[0].Deaths.New), nil
 }
 
 func cronReport() {
