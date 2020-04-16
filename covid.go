@@ -3,9 +3,9 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"net/http"
 	"time"
-
-	"github.com/go-resty/resty/v2"
 )
 
 type tests struct {
@@ -51,18 +51,18 @@ func covid(country string) (string, error) {
 	var report covidReport
 
 	url := "https://covid-193.p.rapidapi.com/statistics?country=" + country
-	client := resty.New()
-
-	resp, err := client.R().
-		SetHeader("x-rapidapi-host", "covid-193.p.rapidapi.com").
-		SetHeader("x-rapidapi-key", *rToken).
-		Get(url)
+	req, _ := http.NewRequest("GET", url, nil)
+	req.Header.Add("x-rapidapi-host", "covid-193.p.rapidapi.com")
+	req.Header.Add("x-rapidapi-key", *rToken)
+	res, err := http.DefaultClient.Do(req)
 
 	if err != nil {
 		return "", err
 	}
 
-	err = json.Unmarshal(resp.Body(), &report)
+	defer res.Body.Close()
+	body, _ := ioutil.ReadAll(res.Body)
+	err = json.Unmarshal(body, &report)
 
 	if report.Results < 1 {
 		return fmt.Sprintf("No results for %s. %s", country, nfStrings[rnd.Intn(len(nfStrings))]), nil
@@ -83,18 +83,18 @@ func reaper() (string, error) {
 	var report covidReport
 
 	url := "https://covid-193.p.rapidapi.com/statistics?country=usa"
-	client := resty.New()
-
-	resp, err := client.R().
-		SetHeader("x-rapidapi-host", "covid-193.p.rapidapi.com").
-		SetHeader("x-rapidapi-key", *rToken).
-		Get(url)
+	req, _ := http.NewRequest("GET", url, nil)
+	req.Header.Add("x-rapidapi-host", "covid-193.p.rapidapi.com")
+	req.Header.Add("x-rapidapi-key", *rToken)
+	res, err := http.DefaultClient.Do(req)
 
 	if err != nil {
 		return "", err
 	}
 
-	err = json.Unmarshal(resp.Body(), &report)
+	defer res.Body.Close()
+	body, _ := ioutil.ReadAll(res.Body)
+	err = json.Unmarshal(body, &report)
 
 	if report.Results < 1 {
 		return "No death count available.", nil
